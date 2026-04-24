@@ -1,0 +1,363 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <meta name="theme-color" content="#2563eb">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="FactPro">
+    <link rel="manifest" href="data:application/manifest+json,{...}">
+    <title>FactPro | Cotizaciones y Notas de Pago</title>
+    <!-- Librerías para exportación -->
+    <script src="https://cdn.sheetjs.com/xlsx-0.20.2/package/dist/xlsx.full.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+    <!-- Fuentes e íconos -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            background: #eef2ff;
+            font-family: 'Segoe UI', Roboto, system-ui, sans-serif;
+            padding: 20px;
+            min-height: 100vh;
+        }
+        /* App layout */
+        .app-container {
+            max-width: 1300px;
+            margin: 0 auto;
+        }
+        /* Header con logo y estado PWA */
+        .app-header {
+            background: white;
+            border-radius: 28px;
+            padding: 12px 24px;
+            margin-bottom: 24px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.05);
+        }
+        .logo h1 { font-size: 1.6rem; color: #1e293b; }
+        .logo span { color: #3b82f6; }
+        .install-btn {
+            background: #1e293b;
+            color: white;
+            border: none;
+            padding: 8px 18px;
+            border-radius: 40px;
+            cursor: pointer;
+            font-weight: 600;
+        }
+        /* Pestañas */
+        .tabs { display: flex; gap: 8px; flex-wrap: wrap; background: white; padding: 12px 20px 0 20px; border-radius: 28px 28px 0 0; }
+        .tab-btn { background: transparent; border: none; padding: 12px 24px; font-weight: 600; cursor: pointer; border-radius: 30px; transition: 0.2s; }
+        .tab-btn.active { background: #3b82f6; color: white; box-shadow: 0 2px 8px rgba(59,130,246,0.3); }
+        .tab-content { display: none; background: white; padding: 28px; border-radius: 0 0 28px 28px; box-shadow: 0 8px 20px rgba(0,0,0,0.05); }
+        .tab-content.active { display: block; animation: fade 0.2s; }
+        @keyframes fade { from { opacity:0; } to { opacity:1; } }
+        /* Grids */
+        .config-bar { display: flex; flex-wrap: wrap; gap: 15px; background: #f8fafc; padding: 15px 20px; border-radius: 20px; margin-bottom: 24px; align-items: flex-end; }
+        .field { display: flex; flex-direction: column; gap: 5px; }
+        .field label { font-weight: 600; font-size: 0.8rem; }
+        .field input, .field select { padding: 8px 12px; border-radius: 14px; border: 1px solid #cbd5e1; }
+        .items-table { overflow-x: auto; margin: 20px 0; }
+        table { width: 100%; border-collapse: collapse; }
+        th, td { padding: 12px 8px; text-align: left; border-bottom: 1px solid #e2e8f0; }
+        th { background: #f1f5f9; }
+        .item-input { width: 100%; min-width: 80px; padding: 6px; border-radius: 12px; border: 1px solid #cbd5e1; }
+        .remove-item { background: #fee2e2; border: none; border-radius: 40px; padding: 4px 12px; cursor: pointer; }
+        .add-row-btn { background: #eef2ff; border: 1px dashed #3b82f6; padding: 8px 20px; border-radius: 40px; cursor: pointer; margin-top: 10px; }
+        .totals-panel { background: #f8fafc; padding: 20px; border-radius: 24px; max-width: 400px; margin-left: auto; text-align: right; }
+        .totals-panel p { margin: 6px 0; display: flex; justify-content: space-between; }
+        .grand-total { font-size: 1.5rem; font-weight: 800; border-top: 2px solid #cbd5e1; padding-top: 10px; margin-top: 10px; }
+        .action-buttons { display: flex; flex-wrap: wrap; gap: 12px; justify-content: flex-end; margin-top: 30px; }
+        .btn { padding: 10px 22px; border-radius: 40px; border: none; font-weight: 600; cursor: pointer; display: inline-flex; gap: 8px; align-items: center; }
+        .btn-primary { background: #2563eb; color: white; }
+        .btn-secondary { background: #e2e8f0; color: #1e293b; }
+        .btn-success { background: #10b981; color: white; }
+        .btn-warning { background: #f59e0b; color: white; }
+        .client-list { max-height: 300px; overflow-y: auto; border: 1px solid #e2e8f0; border-radius: 20px; padding: 12px; margin-top: 15px; }
+        .client-item { display: flex; justify-content: space-between; padding: 8px; border-bottom: 1px solid #eef2ff; }
+        /* firma digital canvas */
+        .signature-pad { border: 2px dashed #cbd5e1; border-radius: 20px; padding: 10px; background: white; margin-top: 15px; }
+        canvas { border: 1px solid #ccc; border-radius: 16px; background: white; }
+        @media (max-width: 720px) { .tab-content { padding: 20px; } }
+    </style>
+</head>
+<body>
+<div class="app-container">
+    <div class="app-header">
+        <div class="logo"><h1>Fact<span>Pro</span></h1><small style="font-size:12px">Cotización + Nota de Pago</small></div>
+        <button id="installPwaBtn" class="install-btn" style="display:none"><i class="fas fa-download"></i> Instalar App</button>
+    </div>
+    <div class="tabs">
+        <button class="tab-btn active" data-tab="cotizador">📄 Cotización</button>
+        <button class="tab-btn" data-tab="notaPago">🧾 Nota de Pago</button>
+        <button class="tab-btn" data-tab="historial">📜 Historial</button>
+        <button class="tab-btn" data-tab="clientesDB">👥 Clientes</button>
+    </div>
+
+    <!-- PESTAÑA COTIZACIÓN (con todas las funciones) -->
+    <div id="cotizador" class="tab-content active">
+        <div class="config-bar">
+            <div class="field"><label>Moneda</label><select id="monedaSelect"><option value="USD">USD $</option><option value="MXN">MXN $</option></select></div>
+            <div class="field"><label>IVA (%)</label><input type="number" id="ivaPorcentaje" value="16" step="1"></div>
+            <div class="field"><label>Descuento (%)</label><input type="number" id="descuentoPorcentaje" value="0" step="0.5"></div>
+            <div class="field"><label>N° Cotización</label><input type="text" id="cotizacionNumero" readonly style="background:#eef2ff;"></div>
+        </div>
+        <div class="form-grid" style="display:flex; flex-wrap:wrap; gap:15px; margin-bottom:20px;">
+            <div class="field" style="flex:2"><label>Cliente</label><input type="text" id="clienteNombre" placeholder="Nombre / Razón social" list="clientesDatalist"></div>
+            <div class="field"><label>NIT / RFC</label><input type="text" id="clienteNit"></div>
+            <div class="field"><label>Email</label><input type="email" id="clienteEmail"></div>
+            <div class="field"><label>Fecha</label><input type="date" id="fechaDoc"></div>
+        </div>
+        <div class="items-section">
+            <table id="itemsTable">
+                <thead><tr><th>Producto/Servicio</th><th>Cantidad</th><th>Precio Unitario</th><th>Subtotal</th><th></th></tr></thead>
+                <tbody id="itemsBody"></tbody>
+            </table>
+            <button class="add-row-btn" id="agregarItemBtn"><i class="fas fa-plus"></i> Agregar línea</button>
+        </div>
+        <div class="totals-panel">
+            <p><span>Subtotal:</span> <span id="subtotalVal">0.00</span></p>
+            <p><span>Descuento (<span id="descuentoMostrar">0</span>%):</span> <span id="descuentoVal">0.00</span></p>
+            <p><span>IVA (<span id="ivaMostrar">16</span>%):</span> <span id="ivaVal">0.00</span></p>
+            <p class="grand-total"><span>TOTAL:</span> <span id="totalFinal">0.00</span></p>
+        </div>
+        <div class="action-buttons">
+            <button id="guardarCotizacionBtn" class="btn btn-primary"><i class="fas fa-save"></i> Guardar Cotización</button>
+            <button id="exportarPDFBtn" class="btn btn-secondary"><i class="fas fa-file-pdf"></i> PDF Profesional</button>
+            <button id="exportarExcelBtn" class="btn btn-secondary"><i class="fas fa-file-excel"></i> Excel</button>
+            <button id="generarNotaPagoBtn" class="btn btn-success"><i class="fas fa-receipt"></i> Generar Nota de Pago</button>
+            <button id="nuevaCotizacionBtn" class="btn btn-warning"><i class="fas fa-file"></i> Nueva Cotización</button>
+        </div>
+        <!-- Firma digital -->
+        <div class="signature-pad">
+            <label><strong>✍️ Firma digital (cliente / responsable)</strong></label>
+            <canvas id="firmaCanvas" width="300" height="120" style="display:block; margin-top:8px; border:1px solid #ccc; background:#fff"></canvas>
+            <div><button id="limpiarFirmaBtn" class="btn-secondary" style="margin-top:8px;">Limpiar firma</button></div>
+        </div>
+    </div>
+
+    <!-- PESTAÑA NOTA DE PAGO -->
+    <div id="notaPago" class="tab-content">
+        <div id="notaPagoContainer" style="background:#fff8e7; border-radius:20px; padding:20px; border-left:8px solid #eab308;">
+            <h3>NOTA DE PAGO <span id="reciboNumeroDisplay">#---</span></h3>
+            <p><strong>Cliente:</strong> <span id="notaCliente">---</span> | <strong>NIT:</strong> <span id="notaNit">---</span></p>
+            <p><strong>Fecha pago:</strong> <span id="notaFechaPago">---</span> | <strong>Cotización origen:</strong> <span id="notaRefCot">---</span></p>
+            <div id="itemsNotaPago" style="margin:15px 0;"></div>
+            <hr>
+            <div style="text-align:right"><strong>Subtotal:</strong> <span id="notaSubtotal">0.00</span><br>
+            <strong>Descuento:</strong> <span id="notaDescuento">0.00</span><br>
+            <strong>IVA:</strong> <span id="notaIva">0.00</span><br>
+            <span style="font-size:1.5rem;">💰 TOTAL PAGADO: <span id="notaTotal">0.00</span></span></div>
+            <div class="signature-area" style="margin-top:20px;"><small>Firma digital:</small> <img id="firmaImagenNota" style="max-width:150px; max-height:60px;" /></div>
+            <div style="margin-top:20px;"><i>✅ Recibo de pago válido. Transacción registrada.</i></div>
+        </div>
+        <div class="action-buttons"><button id="imprimirNotaPagoBtn" class="btn btn-primary"><i class="fas fa-print"></i> Imprimir Nota</button></div>
+    </div>
+
+    <!-- HISTORIAL DE COTIZACIONES -->
+    <div id="historial" class="tab-content">
+        <h3>📋 Historial de Cotizaciones</h3>
+        <div id="historialLista" class="client-list"></div>
+        <div class="action-buttons"><button id="exportarHistorialExcel" class="btn btn-secondary">📎 Exportar Historial a Excel</button></div>
+    </div>
+
+    <!-- BASE DE DATOS CLIENTES -->
+    <div id="clientesDB" class="tab-content">
+        <h3>👥 Administrar Clientes</h3>
+        <div class="form-grid" style="display:flex; gap:10px; flex-wrap:wrap;">
+            <input type="text" id="nuevoClienteNombre" placeholder="Nombre" class="item-input">
+            <input type="text" id="nuevoClienteNit" placeholder="NIT" class="item-input">
+            <input type="email" id="nuevoClienteEmail" placeholder="Email" class="item-input">
+            <button id="agregarClienteBtn" class="btn-primary">Agregar cliente</button>
+        </div>
+        <div id="listaClientesDB" class="client-list"></div>
+    </div>
+</div>
+
+<script>
+    // ---------- GLOBAL ----------
+    let items = [{ desc: "Laptop Gamer", cantidad: 1, precio: 1200 }];
+    let cotizaciones = []; // historial
+    let clientesDB = [];
+    let numeroCotizacionActual = 0;
+    let firmaDataURL = "";
+
+    // Elementos DOM
+    const itemsBody = document.getElementById('itemsBody');
+    const monedaSelect = document.getElementById('monedaSelect');
+    const ivaInput = document.getElementById('ivaPorcentaje');
+    const descuentoInput = document.getElementById('descuentoPorcentaje');
+    const clienteNombre = document.getElementById('clienteNombre');
+    const clienteNit = document.getElementById('clienteNit');
+    const clienteEmail = document.getElementById('clienteEmail');
+    const fechaDoc = document.getElementById('fechaDoc');
+    const cotizacionNumeroSpan = document.getElementById('cotizacionNumero');
+
+    // Helpers
+    function getMonedaSimbolo() { return monedaSelect.value === 'MXN' ? 'MXN' : 'USD'; }
+    function recalcularTodo() {
+        let subtotal = items.reduce((sum, i) => sum + (i.cantidad * i.precio), 0);
+        let descuentoPorc = parseFloat(descuentoInput.value) || 0;
+        let descuentoVal = subtotal * (descuentoPorc / 100);
+        let subtotalConDesc = subtotal - descuentoVal;
+        let ivaPorc = parseFloat(ivaInput.value) || 0;
+        let ivaVal = subtotalConDesc * (ivaPorc / 100);
+        let total = subtotalConDesc + ivaVal;
+        document.getElementById('subtotalVal').innerText = subtotal.toFixed(2);
+        document.getElementById('descuentoVal').innerText = descuentoVal.toFixed(2);
+        document.getElementById('ivaVal').innerText = ivaVal.toFixed(2);
+        document.getElementById('totalFinal').innerText = total.toFixed(2);
+        document.getElementById('descuentoMostrar').innerText = descuentoPorc;
+        document.getElementById('ivaMostrar').innerText = ivaPorc;
+        renderItemsTabla();
+    }
+    function renderItemsTabla() {
+        itemsBody.innerHTML = '';
+        items.forEach((item, idx) => {
+            const row = itemsBody.insertRow();
+            const cellDesc = row.insertCell(0); let inpDesc = document.createElement('input'); inpDesc.value = item.desc; inpDesc.classList.add('item-input'); inpDesc.onchange = e => { items[idx].desc = e.target.value; recalcularTodo(); }; cellDesc.appendChild(inpDesc);
+            const cellCant = row.insertCell(1); let inpCant = document.createElement('input'); inpCant.type = 'number'; inpCant.value = item.cantidad; inpCant.classList.add('item-input'); inpCant.onchange = e => { items[idx].cantidad = parseFloat(e.target.value) || 0; recalcularTodo(); }; cellCant.appendChild(inpCant);
+            const cellPrice = row.insertCell(2); let inpPrice = document.createElement('input'); inpPrice.type = 'number'; inpPrice.value = item.precio; inpPrice.classList.add('item-input'); inpPrice.onchange = e => { items[idx].precio = parseFloat(e.target.value) || 0; recalcularTodo(); }; cellPrice.appendChild(inpPrice);
+            const cellSub = row.insertCell(3); cellSub.innerText = (item.cantidad * item.precio).toFixed(2);
+            const cellDel = row.insertCell(4); let btnDel = document.createElement('button'); btnDel.innerText = '✖'; btnDel.classList.add('remove-item'); btnDel.onclick = () => { items.splice(idx,1); recalcularTodo(); }; cellDel.appendChild(btnDel);
+        });
+    }
+    // Guardar cotización en historial + localStorage
+    function guardarCotizacionEnHistorial() {
+        let cotizacion = {
+            id: Date.now(),
+            numero: cotizacionNumeroSpan.value,
+            fecha: fechaDoc.value,
+            cliente: clienteNombre.value,
+            nit: clienteNit.value,
+            email: clienteEmail.value,
+            items: JSON.parse(JSON.stringify(items)),
+            subtotal: parseFloat(document.getElementById('subtotalVal').innerText),
+            descuentoPorc: parseFloat(descuentoInput.value),
+            ivaPorc: parseFloat(ivaInput.value),
+            total: parseFloat(document.getElementById('totalFinal').innerText),
+            moneda: monedaSelect.value,
+            firma: firmaDataURL
+        };
+        cotizaciones.unshift(cotizacion);
+        localStorage.setItem('factpro_cotizaciones', JSON.stringify(cotizaciones));
+        actualizarHistorialUI();
+        alert("Cotización guardada #" + cotizacion.numero);
+    }
+    function actualizarHistorialUI() {
+        const div = document.getElementById('historialLista');
+        if(!div) return;
+        div.innerHTML = cotizaciones.map(c => `<div class="client-item"><strong>${c.numero}</strong> - ${c.cliente} - ${c.fecha} - Total: ${c.moneda} ${c.total.toFixed(2)} <button class="btn-secondary" onclick="cargarCotizacionAlEditor(${c.id})">Editar</button></div>`).join('');
+    }
+    window.cargarCotizacionAlEditor = function(id) {
+        let cot = cotizaciones.find(c => c.id === id);
+        if(cot){
+            items = cot.items;
+            clienteNombre.value = cot.cliente;
+            clienteNit.value = cot.nit;
+            clienteEmail.value = cot.email;
+            fechaDoc.value = cot.fecha;
+            monedaSelect.value = cot.moneda;
+            ivaInput.value = cot.ivaPorc;
+            descuentoInput.value = cot.descuentoPorc;
+            firmaDataURL = cot.firma || "";
+            if(firmaDataURL){ dibujarFirmaDesdeURL(firmaDataURL); }
+            recalcularTodo();
+            document.querySelector('.tab-btn[data-tab="cotizador"]').click();
+        }
+    };
+    function dibujarFirmaDesdeURL(url){ let canvas = document.getElementById('firmaCanvas'); let ctx = canvas.getContext('2d'); let img = new Image(); img.onload = () => { ctx.drawImage(img,0,0,canvas.width,canvas.height); }; img.src = url; }
+    // Generar Nota de Pago desde cotizacion actual
+    function generarNotaPago() {
+        let subtotal = parseFloat(document.getElementById('subtotalVal').innerText);
+        let descuentoVal = parseFloat(document.getElementById('descuentoVal').innerText);
+        let ivaVal = parseFloat(document.getElementById('ivaVal').innerText);
+        let total = parseFloat(document.getElementById('totalFinal').innerText);
+        let numRecibo = "PAG-" + new Date().getTime().toString().slice(-8);
+        document.getElementById('reciboNumeroDisplay').innerText = numRecibo;
+        document.getElementById('notaCliente').innerText = clienteNombre.value;
+        document.getElementById('notaNit').innerText = clienteNit.value;
+        document.getElementById('notaFechaPago').innerText = new Date().toISOString().slice(0,10);
+        document.getElementById('notaRefCot').innerText = cotizacionNumeroSpan.value;
+        let htmlItems = "<ul>";
+        items.forEach(i => { htmlItems += `<li>${i.desc} - ${i.cantidad} x ${i.precio} = ${(i.cantidad*i.precio).toFixed(2)}</li>`; });
+        htmlItems += "</ul>";
+        document.getElementById('itemsNotaPago').innerHTML = htmlItems;
+        document.getElementById('notaSubtotal').innerText = subtotal.toFixed(2);
+        document.getElementById('notaDescuento').innerText = descuentoVal.toFixed(2);
+        document.getElementById('notaIva').innerText = ivaVal.toFixed(2);
+        document.getElementById('notaTotal').innerText = total.toFixed(2);
+        let firmaImg = document.getElementById('firmaImagenNota');
+        if(firmaDataURL) firmaImg.src = firmaDataURL;
+        else firmaImg.src = "";
+        document.querySelector('.tab-btn[data-tab="notaPago"]').click();
+        // guardar nota como evento en historial? se puede, opcional
+    }
+    // Exportar PDF con html2canvas
+    async function exportarPDF() { const { jsPDF } = window.jspdf; const element = document.getElementById('cotizador'); const canvas = await html2canvas(element, { scale: 2 }); const imgData = canvas.toDataURL('image/png'); const pdf = new jsPDF('p', 'mm', 'a4'); const imgProps = pdf.getImageProperties(imgData); const pdfWidth = pdf.internal.pageSize.getWidth(); const pdfHeight = (imgProps.height * pdfWidth) / imgProps.width; pdf.addImage(imgData, 'PNG', 0, 0, pdfWidth, pdfHeight); pdf.save(`Cotizacion_${cotizacionNumeroSpan.value}.pdf`); }
+    function exportarExcel() { let data = items.map(i => ({ Descripcion: i.desc, Cantidad: i.cantidad, Precio: i.precio, Subtotal: i.cantidad*i.precio })); data.push({ Descripcion: "Subtotal", Cantidad: "", Precio: "", Subtotal: document.getElementById('subtotalVal').innerText }); data.push({ Descripcion: "Descuento", Cantidad: "", Precio: "", Subtotal: document.getElementById('descuentoVal').innerText }); data.push({ Descripcion: "IVA", Cantidad: "", Precio: "", Subtotal: document.getElementById('ivaVal').innerText }); data.push({ Descripcion: "TOTAL", Cantidad: "", Precio: "", Subtotal: document.getElementById('totalFinal').innerText }); const ws = XLSX.utils.json_to_sheet(data); const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, "Cotizacion"); XLSX.writeFile(wb, `Cotizacion_${cotizacionNumeroSpan.value}.xlsx`); }
+    // Autonumeración
+    function generarNumeroCotizacion() { let last = localStorage.getItem('lastCotNum'); let num = last ? parseInt(last)+1 : 1001; localStorage.setItem('lastCotNum', num); return `COT-${num}`; }
+    // Carga inicial LocalStorage
+    function cargarDatos() {
+        let storedCot = localStorage.getItem('factpro_cotizaciones'); if(storedCot) cotizaciones = JSON.parse(storedCot); else cotizaciones = [];
+        let storedClientes = localStorage.getItem('factpro_clientes'); if(storedClientes) clientesDB = JSON.parse(storedClientes); else clientesDB = [{nombre:"Cliente Ejemplo", nit:"123", email:"demo@mail.com"}];
+        actualizarHistorialUI(); actualizarListaClientesDB();
+        clienteNombre.value = clientesDB[0]?.nombre || "";
+        clienteNit.value = clientesDB[0]?.nit || "";
+        clienteEmail.value = clientesDB[0]?.email || "";
+        let num = generarNumeroCotizacion(); cotizacionNumeroSpan.value = num;
+        fechaDoc.value = new Date().toISOString().slice(0,10);
+        recalcularTodo();
+    }
+    function actualizarListaClientesDB() { let cont = document.getElementById('listaClientesDB'); if(cont){ cont.innerHTML = clientesDB.map((c,idx)=>`<div class="client-item">${c.nombre} - ${c.nit} <button onclick="seleccionarCliente(${idx})">Seleccionar</button></div>`).join(''); } }
+    window.seleccionarCliente = function(idx) { let cli = clientesDB[idx]; clienteNombre.value = cli.nombre; clienteNit.value = cli.nit; clienteEmail.value = cli.email; document.querySelector('.tab-btn[data-tab="cotizador"]').click(); };
+    function agregarCliente() { let nom = document.getElementById('nuevoClienteNombre').value; let nit = document.getElementById('nuevoClienteNit').value; let em = document.getElementById('nuevoClienteEmail').value; if(nom){ clientesDB.push({nombre:nom, nit:nit, email:em}); localStorage.setItem('factpro_clientes', JSON.stringify(clientesDB)); actualizarListaClientesDB(); document.getElementById('nuevoClienteNombre').value=""; } }
+    // Firma digital canvas
+    let canvas = document.getElementById('firmaCanvas'); let ctx = canvas.getContext('2d'); let drawing = false;
+    function iniciarFirma(e){ drawing=true; ctx.beginPath(); ctx.moveTo(e.offsetX, e.offsetY); }
+    function dibujar(e){ if(!drawing) return; ctx.lineTo(e.offsetX, e.offsetY); ctx.stroke(); }
+    function terminarFirma(){ drawing=false; firmaDataURL = canvas.toDataURL(); }
+    canvas.addEventListener('mousedown', iniciarFirma); canvas.addEventListener('mousemove', dibujar); canvas.addEventListener('mouseup', terminarFirma);
+    canvas.addEventListener('touchstart', (e) => { e.preventDefault(); let rect = canvas.getBoundingClientRect(); let x = e.touches[0].clientX - rect.left; let y = e.touches[0].clientY - rect.top; iniciarFirma({offsetX:x, offsetY:y}); });
+    canvas.addEventListener('touchmove', (e) => { e.preventDefault(); let rect = canvas.getBoundingClientRect(); let x = e.touches[0].clientX - rect.left; let y = e.touches[0].clientY - rect.top; dibujar({offsetX:x, offsetY:y}); });
+    canvas.addEventListener('touchend', terminarFirma);
+    document.getElementById('limpiarFirmaBtn').onclick = () => { ctx.clearRect(0,0,canvas.width,canvas.height); firmaDataURL=""; };
+    // Event listeners
+    document.getElementById('agregarItemBtn').onclick = () => { items.push({desc:"Nuevo item", cantidad:1, precio:0}); recalcularTodo(); };
+    document.getElementById('guardarCotizacionBtn').onclick = guardarCotizacionEnHistorial;
+    document.getElementById('exportarPDFBtn').onclick = exportarPDF;
+    document.getElementById('exportarExcelBtn').onclick = exportarExcel;
+    document.getElementById('generarNotaPagoBtn').onclick = generarNotaPago;
+    document.getElementById('nuevaCotizacionBtn').onclick = () => { items = [{desc:"Producto", cantidad:1, precio:0}]; recalcularTodo(); cotizacionNumeroSpan.value = generarNumeroCotizacion(); clienteNombre.value = clientesDB[0]?.nombre || ""; clienteNit.value = clientesDB[0]?.nit || ""; clienteEmail.value = clientesDB[0]?.email || ""; fechaDoc.value = new Date().toISOString().slice(0,10); };
+    document.getElementById('imprimirNotaPagoBtn').onclick = () => { window.print(); };
+    document.getElementById('agregarClienteBtn').onclick = agregarCliente;
+    document.getElementById('exportarHistorialExcel').onclick = () => { let ws = XLSX.utils.json_to_sheet(cotizaciones.map(c => ({Numero:c.numero, Cliente:c.cliente, Total:c.total, Fecha:c.fecha}))); let wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, "Historial"); XLSX.writeFile(wb, "historial_cotizaciones.xlsx"); };
+    // PWA: Service Worker + Manifest automático
+    if('serviceWorker' in navigator){
+        navigator.serviceWorker.register('/sw.js').catch(()=>console.log("SW no registrado (mock)"));
+        // Generamos un service worker básico inline mediante blob
+        let swCode = `self.addEventListener('fetch', event => { event.respondWith(fetch(event.request)); });`;
+        let blob = new Blob([swCode], {type: 'application/javascript'});
+        let swUrl = URL.createObjectURL(blob);
+        navigator.serviceWorker.register(swUrl);
+    }
+    let installPrompt;
+    window.addEventListener('beforeinstallprompt', (e) => { e.preventDefault(); installPrompt = e; document.getElementById('installPwaBtn').style.display = 'flex'; });
+    document.getElementById('installPwaBtn').onclick = () => { if(installPrompt) { installPrompt.prompt(); installPrompt.userChoice.then(()=>{ document.getElementById('installPwaBtn').style.display = 'none'; }); } };
+    // Tab navigation
+    document.querySelectorAll('.tab-btn').forEach(btn => btn.addEventListener('click',()=>{ document.querySelectorAll('.tab-content').forEach(tc=>tc.classList.remove('active')); document.getElementById(btn.dataset.tab).classList.add('active'); document.querySelectorAll('.tab-btn').forEach(b=>b.classList.remove('active')); btn.classList.add('active'); }));
+    cargarDatos();
+    recalcularTodo();
+    // Datalist clientes
+    const datalist = document.createElement('datalist'); datalist.id = 'clientesDatalist'; document.body.appendChild(datalist);
+    function actualizarDatalist() { datalist.innerHTML = clientesDB.map(c => `<option value="${c.nombre}">`).join(''); }
+    setInterval(()=>{ actualizarDatalist(); },1000);
+</script>
+</body>
+</html>
